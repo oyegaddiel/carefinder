@@ -28,10 +28,12 @@ type HospitalWithCoords = {
 // Think of props like function arguments — the parent passes data in, the component uses it
 type HospitalMapProps = {
   hospitals: HospitalWithCoords[];
-  apiKey: string;
 };
 
-export default function HospitalMap({ hospitals, apiKey }: HospitalMapProps) {
+export default function HospitalMap({ hospitals }: HospitalMapProps) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  // process.env reads from .env.local at build time
+  // ?? '' means "if this value is undefined, use an empty string instead"
   // selectedId tracks which hospital pin the user has clicked
   // null means no pin is selected (no popup showing)
   const [selectedId, setSelectedId] = useState<string | null>(null);

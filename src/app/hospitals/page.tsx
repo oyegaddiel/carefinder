@@ -1,40 +1,38 @@
-"use client";
+// src/app/hospitals/page.tsx
+// Hospital listing page with filters, map/list toggle, and GPS "Find Near Me"
 
-// This tells Next.js this page runs in the browser, not just on the server
-// We need this because we're using useState and useEffect (interactive React features)
+"use client";
+// 'use client' tells Next.js this component runs in the browser, not the server.
+// We need this because we use browser APIs like navigator.geolocation and useState.
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import Link from "next/link";
-// Link is Next.js's built-in navigation component.
-// It works like <a> but handles client-side routing — no full page reload.
+// useEffect: runs code after the page loads (e.g. fetch data from Supabase)
+// useState: stores values that can change (e.g. the list of hospitals, active filters)
 
 import dynamic from "next/dynamic";
-// dynamic import means the map only loads in the browser, not during server rendering
-// Maps use browser-only APIs (like window) that don't exist on the server
+// dynamic() lets us load a component only in the browser.
+// HospitalMap uses Google Maps which doesn't work on the server, so we load it dynamically.
+
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+
+// ─── Dynamic import for the map (browser-only) ───────────────────────────────
 const HospitalMap = dynamic(() => import("@/components/ui/HospitalMap"), {
   ssr: false,
+  // ssr: false means "do not run this on the server". Google Maps needs window/document.
   loading: () => (
-    <div
-      style={{
-        height: "520px",
-        background: "#f5f4f0",
-        borderRadius: "12px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#8a8a8a",
-      }}
-    >
-      Loading map...
+    <div className="flex items-center justify-center h-96 bg-gray-50 rounded-xl">
+      <p className="text-gray-500">Loading map...</p>
     </div>
   ),
 });
 
-// --- TYPE DEFINITIONS ---
-// A "type" in TypeScript is a blueprint that describes the shape of your data.
+// ─── TypeScript Types ─────────────────────────────────────────────────────────
+// A "type" in TypeScript is like a blueprint. It tells TypeScript exactly what
+// shape our data will have, so it can catch mistakes before they become bugs.
+
 type Hospital = {
-  id: string; // UUID from Supabase — always a string
+  id: string; // UUID from Supabase — a unique identifier string
   name: string;
   address: string;
   state: string;
@@ -43,41 +41,13 @@ type Hospital = {
   phone: string | null; // "string | null" means it can be a string OR null (empty)
   rating: number; // a decimal number like 4.5
   verified: boolean; // true or false
-  specialties: string[]; // an array of strings e.g. ["Cardiology", "Pediatrics"]
+  specialties: string[]; // an array (list) of strings e.g. ["cardiology", "pediatrics"]
+  latitude: number;
+  longitude: number;
+  distance_km?: number; // the "?" means this field is optional — only present in Near Me results
 };
 
-// Extended hospital type that includes lat/lng from our Supabase RPC function
-type HospitalWithCoords = {
-  id: string;
-  name: string;
-  state: string;
-  lga: string;
-  type: string;
-  verified: boolean;
-  latitude: number | null; // null if hospital has no GPS data yet
-  longitude: number | null;
-};
-
-// These are the filter values the user can select.
-// Empty string '' means "no filter applied" (show all).
-type Filters = {
-  state: string;
-  type: string;
-  specialty: string;
-};
-
-// Converts a slug like "general-medicine" to "General Medicine"
-// split('-') breaks it into ['general', 'medicine']
-// map() capitalizes the first letter of each word
-// join(' ') puts them back together with spaces
-function formatSpecialty(slug: string): string {
-  return slug
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
-// All Nigerian states + FCT — used to populate the State dropdown
+// ─── Nigerian States ──────────────────────────────────────────────────────────
 const NIGERIAN_STATES = [
   "Abia",
   "Adamawa",
@@ -124,757 +94,594 @@ const HOSPITAL_TYPES = [
   "State Hospital",
   "Private Hospital",
   "Clinic",
-  "Specialist Hospital",
+  "Primary Health Centre",
 ];
 
 const SPECIALTIES = [
-  "General Medicine",
-  "Emergency Care",
-  "Cardiology",
-  "Pediatrics",
-  "Maternity & Gynecology",
-  "Orthopedics",
-  "Neurology",
-  "Ophthalmology",
-  "Dentistry",
-  "Radiology & Imaging",
+  "general-medicine",
+  "emergency-care",
+  "cardiology",
+  "pediatrics",
+  "maternity-gynecology",
+  "orthopedics",
+  "neurology",
+  "ophthalmology",
+  "dentistry",
+  "radiology-imaging",
 ];
 
+// ─── Helper: format specialty slug to readable label ─────────────────────────
+function formatSpecialty(slug: string): string {
+  // slug is something like "general-medicine"
+  // We split by "-", capitalize each word, then join with a space
+  return slug
+    .split("-")
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+    .replace("And", "&")
+    .replace("Gynecology", "Gynecology");
+}
+
+// ─── Main Page Component ──────────────────────────────────────────────────────
 export default function HospitalsPage() {
-  // useState<Hospital[]>([]) means:
-  // - hospitals is a variable that holds an array of Hospital objects
-  // - setHospitals is the function to update it
-  // - [] is the starting value (empty array — no hospitals loaded yet)
+  // --- State variables ---
+  // Each useState() creates a variable + a function to update it.
+  // When you call the update function, React re-renders the component.
+
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  // hospitals: the full list loaded from Supabase (or Near Me results)
+  // Hospital[] means "an array of Hospital objects"
 
-  // 'list' | 'map' is a "union type" — viewMode can only ever be one of these two strings
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [loading, setLoading] = useState(true);
+  // loading: true while we're fetching data, false when done
 
-  // Holds hospitals with their GPS coordinates extracted from PostGIS
-  const [hospitalsWithCoords, setHospitalsWithCoords] = useState<
-    HospitalWithCoords[]
-  >([]);
+  const [view, setView] = useState<"list" | "map">("list");
+  // view: either 'list' or 'map' — controls which view is shown
+  // 'list' | 'map' is a "union type" — only these two string values are allowed
 
-  // Filters is an object with three properties, all starting as empty strings
-  const [filters, setFilters] = useState<Filters>({
-    state: "",
-    type: "",
-    specialty: "",
-  });
+  const [filterState, setFilterState] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [filterSpecialty, setFilterSpecialty] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  // These four store the current dropdown/search values. Empty string = no filter.
 
-  // useEffect runs code after the page loads
-  // The empty array [] at the end means "run this once, when the page first opens"
+  const [nearMeActive, setNearMeActive] = useState(false);
+  // nearMeActive: true when the user has clicked "Find Near Me" and results are showing
+
+  const [nearMeLoading, setNearMeLoading] = useState(false);
+  // nearMeLoading: true while we're waiting for GPS + Supabase to respond
+
+  const [nearMeError, setNearMeError] = useState<string | null>(null);
+  // nearMeError: stores an error message string, or null if there's no error
+
+  // --- Load all hospitals on page load ---
   useEffect(() => {
-    async function fetchHospitals() {
-      const { data, error } = await supabase
-        .from("hospitals")
-        .select("*")
-        .order("name", { ascending: true });
-
-      if (error) {
-        console.error("Error fetching hospitals:", error.message);
-      } else {
-        // data could be null if the table is empty, so we use ?? [] as a fallback
-        setHospitals(data ?? []);
-      }
-      setLoading(false);
-    }
-
-    async function fetchCoordinates() {
-      // .rpc() calls a Supabase SQL function by name
-      // get_hospitals_with_coordinates is the function we created in the SQL editor
-      const { data, error } = await supabase.rpc(
-        "get_hospitals_with_coordinates",
-      );
-      if (!error && data) {
-        setHospitalsWithCoords(data);
-      }
-    }
-
-    fetchHospitals();
-    fetchCoordinates();
+    // useEffect with an empty array [] runs once when the page first loads.
+    fetchAllHospitals();
   }, []);
 
-  // This function updates a single filter without touching the others.
-  // "keyof Filters" means the key must be one of: 'state', 'type', or 'specialty'
-  function updateFilter(key: keyof Filters, value: string) {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    // ...prev means "spread all existing filter values, then override just [key]"
+  async function fetchAllHospitals() {
+    // async means this function can wait for things (like database calls)
+    setLoading(true);
+    setNearMeActive(false); // reset Near Me mode when loading all hospitals
+
+    const { data, error } = await supabase.rpc(
+      "get_hospitals_with_coordinates",
+    );
+    // supabase.rpc() calls the SQL function we created earlier.
+    // "await" pauses here until Supabase responds.
+    // The result comes back as { data, error } — we destructure both.
+
+    if (error) {
+      console.error("Error fetching hospitals:", error);
+      // console.error prints to the browser's developer console (F12 → Console tab)
+    } else {
+      setHospitals(data || []);
+      // data || [] means: use data if it exists, otherwise use an empty array
+    }
+
+    setLoading(false);
   }
 
-  function clearFilters() {
-    setSearchQuery("");
-    setFilters({ state: "", type: "", specialty: "" });
+  // --- GPS "Find Near Me" logic ---
+  async function handleFindNearMe() {
+    setNearMeError(null); // clear any previous error
+    setNearMeLoading(true);
+
+    // Check if the browser supports geolocation
+    if (!navigator.geolocation) {
+      setNearMeError("Your browser does not support location services.");
+      setNearMeLoading(false);
+      return;
+      // "return" exits the function early — no point continuing if GPS isn't available
+    }
+
+    // Ask the browser for the user's GPS coordinates
+    // getCurrentPosition() is asynchronous but uses callbacks instead of promises,
+    // so we wrap it in a Promise so we can use "await" with it.
+    const position = await new Promise<GeolocationPosition>(
+      (resolve, reject) => {
+        // GeolocationPosition is a built-in browser type — it represents GPS data
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000, // give up after 10 seconds
+          maximumAge: 60000, // accept a cached position up to 1 minute old
+        });
+      },
+    ).catch((err: GeolocationPositionError) => {
+      // GeolocationPositionError is another built-in browser type
+      if (err.code === 1) {
+        // Code 1 = user denied permission
+        setNearMeError(
+          "Location access was denied. Please allow location access in your browser and try again.",
+        );
+      } else {
+        setNearMeError("Could not get your location. Please try again.");
+      }
+      setNearMeLoading(false);
+      return null;
+      // return null signals that GPS failed — we check for this below
+    });
+
+    if (!position) return;
+    // If position is null (GPS failed), stop here
+
+    const userLat = position.coords.latitude;
+    const userLng = position.coords.longitude;
+    // coords.latitude and coords.longitude are the actual GPS numbers
+    // e.g. latitude: 6.5244, longitude: 3.3792 (Lagos)
+
+    // Call the Supabase RPC function with the user's coordinates
+    const { data, error } = await supabase.rpc("get_hospitals_near_location", {
+      user_lat: userLat,
+      user_lng: userLng,
+      radius_km: 200,
+      // 200km radius — wide enough to always show results in Nigeria
+    });
+
+    if (error) {
+      setNearMeError("Failed to find nearby hospitals. Please try again.");
+      console.error("Near Me error:", error);
+    } else {
+      setHospitals(data || []);
+      setNearMeActive(true);
+      // Clear all dropdown filters so they don't conflict with Near Me results
+      setFilterState("");
+      setFilterType("");
+      setFilterSpecialty("");
+      setSearchQuery("");
+    }
+
+    setNearMeLoading(false);
   }
 
-  // Apply all active filters to the hospital list
-  const filtered = hospitals.filter((h) => {
-    // Text search — checks name, state, and address
+  // --- Filter logic (runs on every render) ---
+  const filteredHospitals = hospitals.filter((hospital: Hospital) => {
+    // .filter() creates a new array with only the items that pass the test
+    // For each hospital, we return true (keep it) or false (remove it)
+
+    const matchesState = filterState === "" || hospital.state === filterState;
+    const matchesType = filterType === "" || hospital.type === filterType;
+    const matchesSpecialty =
+      filterSpecialty === "" ||
+      (hospital.specialties && hospital.specialties.includes(filterSpecialty));
     const matchesSearch =
       searchQuery === "" ||
-      h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      h.state.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      h.address.toLowerCase().includes(searchQuery.toLowerCase());
+      hospital.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      hospital.state.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      hospital.type.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // State filter — empty string means "match everything"
-    const matchesState = filters.state === "" || h.state === filters.state;
-
-    // Type filter
-    const matchesType = filters.type === "" || h.type === filters.type;
-
-    // Specialty filter — checks if the hospital's specialties array includes the selected specialty
-    const matchesSpecialty =
-      filters.specialty === "" ||
-      (h.specialties && h.specialties.includes(filters.specialty));
-
-    // All four conditions must be true for the hospital to show up
-    return matchesSearch && matchesState && matchesType && matchesSpecialty;
+    return matchesState && matchesType && matchesSpecialty && matchesSearch;
+    // All four must be true for the hospital to appear in results
   });
 
-  // Check if any filter is currently active — used to show/hide the "Clear" button
-  const hasActiveFilters =
-    searchQuery !== "" ||
-    filters.state !== "" ||
-    filters.type !== "" ||
-    filters.specialty !== "";
-
-  // Shared style for all three filter dropdowns
-  const selectStyle: React.CSSProperties = {
-    padding: "0.6rem 0.8rem",
-    border: "1px solid #ddd",
-    borderRadius: "8px",
-    fontSize: "0.88rem",
-    color: "var(--text-primary)",
-    background: "#ffffff",
-    cursor: "pointer",
-    fontFamily: "var(--font-dm-sans, sans-serif)",
-    minWidth: "160px",
-  };
-  // React.CSSProperties is a TypeScript type that describes valid CSS style objects.
-  // Without it, TypeScript might not know what properties are valid here.
-
-  // Helper function that returns toggle button styles based on whether it's active
-  // active: boolean means this parameter can only be true or false
-  const toggleBtnStyle = (active: boolean): React.CSSProperties => ({
-    padding: "0.5rem 1rem",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    background: active ? "var(--teal-900)" : "#fff",
-    color: active ? "#fff" : "var(--text-secondary)",
-    fontSize: "0.85rem",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontFamily: "var(--font-dm-sans, sans-serif)",
-  });
-  // The ? : syntax above is called a "ternary operator"
-  // active ? 'var(--teal-900)' : '#fff' means:
-  // "if active is true, use teal-900, otherwise use white"
-
+  // --- Render ---
   return (
-    <main
-      style={{
-        fontFamily: "var(--font-dm-sans, sans-serif)",
-        minHeight: "100vh",
-      }}
+    <div
+      className="min-h-screen"
+      style={{ backgroundColor: "var(--warm-white)" }}
     >
-      {/* ── HEADER ── */}
+      {/* Header */}
       <header
-        style={{
-          background: "var(--teal-900)",
-          padding: "0 2rem",
-          height: "64px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
+        style={{ backgroundColor: "var(--teal-900)" }}
+        className="text-white"
       >
-        <Link
-          href="/"
-          style={{
-            fontFamily: "var(--font-playfair, serif)",
-            color: "#ffffff",
-            textDecoration: "none",
-            fontSize: "1.4rem",
-            fontWeight: "700",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Carefinder
-        </Link>
-        <nav style={{ display: "flex", gap: "2rem" }}>
-          <Link
-            href="/hospitals"
-            style={{
-              color: "#ffffff",
-              textDecoration: "none",
-              fontSize: "0.9rem",
-              fontWeight: "600",
-            }}
-          >
-            Find Hospitals
-          </Link>
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
             href="/"
-            style={{
-              color: "#a8d5d1",
-              textDecoration: "none",
-              fontSize: "0.9rem",
-            }}
+            className="text-2xl font-bold"
+            style={{ fontFamily: "var(--font-playfair)" }}
           >
-            Home
+            Carefinder
           </Link>
-        </nav>
+          <nav className="flex gap-6 text-sm">
+            <Link href="/" className="hover:text-teal-300 transition-colors">
+              Home
+            </Link>
+            <Link href="/hospitals" className="text-teal-300 font-medium">
+              Find Hospitals
+            </Link>
+          </nav>
+        </div>
       </header>
 
-      {/* ── PAGE TITLE BAR ── */}
-      <div
-        style={{
-          background: "var(--teal-900)",
-          padding: "2rem 2rem 2.5rem",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-          <h1
-            style={{
-              fontFamily: "var(--font-playfair, serif)",
-              color: "#ffffff",
-              fontSize: "1.8rem",
-              fontWeight: "700",
-              marginBottom: "1.25rem",
-            }}
-          >
-            Find Hospitals
-          </h1>
-
-          {/* Search bar */}
-          <div
-            style={{
-              display: "flex",
-              background: "#ffffff",
-              borderRadius: "10px",
-              overflow: "hidden",
-              maxWidth: "600px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-            }}
-          >
-            <input
-              type="text"
-              placeholder="Search by name, state, or address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "0.85rem 1.2rem",
-                border: "none",
-                outline: "none",
-                fontSize: "0.92rem",
-                fontFamily: "var(--font-dm-sans, sans-serif)",
-              }}
-            />
-            <button
-              style={{
-                background: "var(--teal-500)",
-                color: "#fff",
-                border: "none",
-                padding: "0.85rem 1.25rem",
-                fontWeight: "600",
-                fontSize: "0.9rem",
-                cursor: "pointer",
-                fontFamily: "var(--font-dm-sans, sans-serif)",
-              }}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Page title + Near Me button */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h1
+              className="text-3xl font-bold text-gray-900"
+              style={{ fontFamily: "var(--font-playfair)" }}
             >
-              Search
-            </button>
+              Find Hospitals
+            </h1>
+            <p className="text-gray-500 mt-1 text-sm">
+              {nearMeActive
+                ? `Showing hospitals near your location, sorted by distance`
+                : `Search and filter across Nigeria's healthcare directory`}
+            </p>
           </div>
-        </div>
-      </div>
 
-      {/* ── FILTERS + RESULTS ── */}
-      <div
-        style={{
-          maxWidth: "1000px",
-          margin: "0 auto",
-          padding: "2rem",
-          display: "flex",
-          gap: "2rem",
-          alignItems: "flex-start",
-        }}
-      >
-        {/* ── LEFT: FILTER PANEL ── */}
-        <aside
-          style={{
-            width: "220px",
-            flexShrink: 0, // prevents this column from shrinking when results take up space
-            background: "#ffffff",
-            border: "1px solid #e8e6e0",
-            borderRadius: "12px",
-            padding: "1.25rem",
-            position: "sticky",
-            top: "1rem", // sticks to the top when user scrolls
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "1.25rem",
-            }}
-          >
-            <h3
-              style={{
-                fontSize: "0.9rem",
-                fontWeight: "700",
-                color: "var(--text-primary)",
-              }}
-            >
-              Filters
-            </h3>
-            {/* Only show Clear button when at least one filter is active */}
-            {hasActiveFilters && (
+          {/* Find Near Me button */}
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-3">
+              {nearMeActive && (
+                // This button only appears when Near Me is active
+                <button
+                  onClick={fetchAllHospitals}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  ✕ Clear Near Me
+                </button>
+              )}
               <button
-                onClick={clearFilters}
+                onClick={handleFindNearMe}
+                disabled={nearMeLoading}
+                // disabled=true makes the button unclickable while loading
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium transition-all disabled:opacity-60"
                 style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--teal-500)",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                  fontFamily: "var(--font-dm-sans, sans-serif)",
-                  fontWeight: "600",
+                  backgroundColor: nearMeActive
+                    ? "var(--teal-400)"
+                    : "var(--teal-700)",
                 }}
               >
-                Clear all
+                {nearMeLoading ? (
+                  // Show a spinner while loading
+                  <>
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8z"
+                      />
+                    </svg>
+                    Locating...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    {nearMeActive ? "Near Me ✓" : "Find Near Me"}
+                  </>
+                )}
               </button>
+            </div>
+
+            {/* Error message under the button */}
+            {nearMeError && (
+              <p className="text-red-500 text-xs max-w-xs text-right">
+                {nearMeError}
+              </p>
             )}
           </div>
+        </div>
 
-          {/* State filter */}
-          <div style={{ marginBottom: "1rem" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: "0.4rem",
-              }}
-            >
-              State
-            </label>
-            <select
-              value={filters.state}
-              onChange={(e) => updateFilter("state", e.target.value)}
-              style={{ ...selectStyle, width: "100%" }}
-            >
-              <option value="">All states</option>
-              {NIGERIAN_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Filters */}
+        {!nearMeActive && (
+          // Hide filters when Near Me is active — results are already sorted by distance
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Search */}
+              <input
+                type="text"
+                placeholder="Search hospitals..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                // e is the event object. e.target.value is what the user typed.
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
 
-          {/* Hospital Type filter */}
-          <div style={{ marginBottom: "1rem" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: "0.4rem",
-              }}
-            >
-              Type
-            </label>
-            <select
-              value={filters.type}
-              onChange={(e) => updateFilter("type", e.target.value)}
-              style={{ ...selectStyle, width: "100%" }}
-            >
-              <option value="">All types</option>
-              {HOSPITAL_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </div>
+              {/* State filter */}
+              <select
+                value={filterState}
+                onChange={(e) => setFilterState(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">All States</option>
+                {NIGERIAN_STATES.map((state: string) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
 
-          {/* Specialty filter */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: "0.4rem",
-              }}
-            >
-              Specialty
-            </label>
-            <select
-              value={filters.specialty}
-              onChange={(e) => updateFilter("specialty", e.target.value)}
-              style={{ ...selectStyle, width: "100%" }}
-            >
-              <option value="">All specialties</option>
-              {SPECIALTIES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </aside>
+              {/* Type filter */}
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">All Types</option>
+                {HOSPITAL_TYPES.map((type: string) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
 
-        {/* ── RIGHT: RESULTS ── */}
-        <div style={{ flex: 1 }}>
-          {/* View toggle — switches between card list and Google Map */}
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-            <button
-              onClick={() => setViewMode("list")}
-              style={toggleBtnStyle(viewMode === "list")}
-            >
-              ☰ List View
-            </button>
-            <button
-              onClick={() => setViewMode("map")}
-              style={toggleBtnStyle(viewMode === "map")}
-            >
-              🗺 Map View
-            </button>
-          </div>
+              {/* Specialty filter */}
+              <select
+                value={filterSpecialty}
+                onChange={(e) => setFilterSpecialty(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">All Specialties</option>
+                {SPECIALTIES.map((s: string) => (
+                  <option key={s} value={s}>
+                    {formatSpecialty(s)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Results count + active filter tags */}
-          <div style={{ marginBottom: "1rem" }}>
-            <p
-              style={{
-                fontSize: "0.9rem",
-                color: "var(--text-secondary)",
-                marginBottom: "0.5rem",
-              }}
-            >
-              {loading
-                ? "Loading..."
-                : `Showing ${filtered.length} of ${hospitals.length} hospital${hospitals.length !== 1 ? "s" : ""}`}
-            </p>
-
-            {/* Active filter tags — shows which filters are currently on */}
-            {hasActiveFilters && (
-              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                {filters.state && (
+            {/* Active filters + clear */}
+            {(filterState || filterType || filterSpecialty || searchQuery) && (
+              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                {filterState && (
                   <span
-                    style={{
-                      background: "var(--teal-100)",
-                      color: "var(--teal-700)",
-                      fontSize: "0.75rem",
-                      padding: "0.2rem 0.6rem",
-                      borderRadius: "20px",
-                      fontWeight: "600",
-                    }}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full text-white"
+                    style={{ backgroundColor: "var(--teal-500)" }}
                   >
-                    State: {filters.state}
+                    {filterState}
+                    <button
+                      onClick={() => setFilterState("")}
+                      className="ml-1 hover:opacity-70"
+                    >
+                      ✕
+                    </button>
                   </span>
                 )}
-                {filters.type && (
+                {filterType && (
                   <span
-                    style={{
-                      background: "var(--teal-100)",
-                      color: "var(--teal-700)",
-                      fontSize: "0.75rem",
-                      padding: "0.2rem 0.6rem",
-                      borderRadius: "20px",
-                      fontWeight: "600",
-                    }}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full text-white"
+                    style={{ backgroundColor: "var(--teal-500)" }}
                   >
-                    Type: {filters.type}
+                    {filterType}
+                    <button
+                      onClick={() => setFilterType("")}
+                      className="ml-1 hover:opacity-70"
+                    >
+                      ✕
+                    </button>
                   </span>
                 )}
-                {filters.specialty && (
+                {filterSpecialty && (
                   <span
-                    style={{
-                      background: "var(--teal-100)",
-                      color: "var(--teal-700)",
-                      fontSize: "0.75rem",
-                      padding: "0.2rem 0.6rem",
-                      borderRadius: "20px",
-                      fontWeight: "600",
-                    }}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full text-white"
+                    style={{ backgroundColor: "var(--teal-500)" }}
                   >
-                    Specialty: {filters.specialty}
+                    {formatSpecialty(filterSpecialty)}
+                    <button
+                      onClick={() => setFilterSpecialty("")}
+                      className="ml-1 hover:opacity-70"
+                    >
+                      ✕
+                    </button>
                   </span>
                 )}
+                {searchQuery && (
+                  <span
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full text-white"
+                    style={{ backgroundColor: "var(--teal-500)" }}
+                  >
+                    &ldquo;{searchQuery}&rdquo;
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="ml-1 hover:opacity-70"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setFilterState("");
+                    setFilterType("");
+                    setFilterSpecialty("");
+                    setSearchQuery("");
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline ml-1"
+                >
+                  Clear all
+                </button>
               </div>
             )}
           </div>
+        )}
 
-          {/* ── MAP VIEW ──
-              Only renders when the user clicks "Map View"
-              We pass only the filtered hospitals so the map respects active filters
-              hospitalsWithCoords.filter(...) cross-references the filtered list by id */}
-          {viewMode === "map" && !loading && (
-            <HospitalMap
-              hospitals={hospitalsWithCoords.filter(
-                (h) => filtered.some((f) => f.id === h.id),
-                // .some() returns true if at least one element in filtered matches
-              )}
-              apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""}
-              // ?? '' means "use empty string if the env variable is undefined"
-            />
-          )}
+        {/* Result count + view toggle */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500">
+            {loading
+              ? "Loading..."
+              : nearMeActive
+                ? `${filteredHospitals.length} hospital${filteredHospitals.length !== 1 ? "s" : ""} near you`
+                : `Showing ${filteredHospitals.length} of ${hospitals.length} hospitals`}
+          </p>
+          <div className="flex rounded-lg overflow-hidden border border-gray-200">
+            <button
+              onClick={() => setView("list")}
+              className="px-4 py-1.5 text-sm transition-colors"
+              style={{
+                backgroundColor: view === "list" ? "var(--teal-700)" : "white",
+                color: view === "list" ? "white" : "var(--text-secondary)",
+              }}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setView("map")}
+              className="px-4 py-1.5 text-sm transition-colors"
+              style={{
+                backgroundColor: view === "map" ? "var(--teal-700)" : "white",
+                color: view === "map" ? "white" : "var(--text-secondary)",
+              }}
+            >
+              Map
+            </button>
+          </div>
+        </div>
 
-          {/* ── LIST VIEW ──
-              The <> and </> are called a React Fragment — they group elements
-              without adding an extra HTML element to the page */}
-          {viewMode === "list" && (
-            <>
-              {/* Loading state */}
-              {loading && (
-                <div
-                  style={{
-                    padding: "3rem",
-                    textAlign: "center",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  Loading hospitals...
-                </div>
-              )}
+        {/* Loading state */}
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="animate-spin h-8 w-8 border-4 border-teal-600 border-t-transparent rounded-full mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">Loading hospitals...</p>
+            </div>
+          </div>
+        )}
 
-              {/* Empty state — shown when search returns no matches */}
-              {!loading && filtered.length === 0 && (
-                <div
-                  style={{
-                    padding: "3rem",
-                    textAlign: "center",
-                    color: "var(--text-muted)",
-                    background: "#fff",
-                    borderRadius: "12px",
-                    border: "1px solid #e8e6e0",
-                  }}
-                >
-                  <p style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
-                    No hospitals match your search.
-                  </p>
-                  <p style={{ fontSize: "0.85rem" }}>
-                    Try adjusting your filters or search term.
-                  </p>
-                </div>
-              )}
-
-              {/* Hospital cards */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.875rem",
-                }}
-              >
-                {filtered.map((hospital) => (
-                  // Link wraps the entire card so clicking anywhere navigates to the detail page
-                  <Link
-                    key={hospital.id}
-                    href={`/hospitals/${hospital.id}`}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <div
-                      style={{
-                        background: "#ffffff",
-                        border: "1px solid #e8e6e0",
-                        borderRadius: "12px",
-                        padding: "1.25rem 1.5rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-                        transition: "box-shadow 0.2s, transform 0.2s",
-                        cursor: "pointer",
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.boxShadow =
-                          "0 6px 20px rgba(0,0,0,0.09)";
-                        e.currentTarget.style.transform = "translateY(-2px)";
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.boxShadow =
-                          "0 1px 4px rgba(0,0,0,0.04)";
-                        e.currentTarget.style.transform = "translateY(0)";
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        {/* Hospital name + verified badge */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            marginBottom: "0.35rem",
-                          }}
-                        >
+        {/* Content: List or Map view */}
+        {!loading && (
+          <>
+            {view === "map" ? (
+              <div className="rounded-xl overflow-hidden shadow-sm border border-gray-100">
+                <HospitalMap hospitals={filteredHospitals} />
+              </div>
+            ) : (
+              <>
+                {filteredHospitals.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-gray-400 text-lg">No hospitals found.</p>
+                    <p className="text-gray-400 text-sm mt-1">
+                      Try adjusting your filters or expanding the search radius.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredHospitals.map((hospital: Hospital) => (
+                      <Link
+                        key={hospital.id}
+                        href={`/hospitals/${hospital.id}`}
+                        className="block bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+                      >
+                        {/* Card header */}
+                        <div className="flex items-start justify-between gap-2 mb-3">
                           <h3
-                            style={{
-                              fontFamily: "var(--font-playfair, serif)",
-                              fontSize: "1rem",
-                              fontWeight: "700",
-                              color: "var(--text-primary)",
-                            }}
+                            className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2"
+                            style={{ fontFamily: "var(--font-playfair)" }}
                           >
                             {hospital.name}
                           </h3>
-                          {/* hospital.verified && (...) means: only render this if verified is true */}
                           {hospital.verified && (
                             <span
-                              style={{
-                                background: "var(--teal-100)",
-                                color: "var(--teal-700)",
-                                fontSize: "0.68rem",
-                                fontWeight: "700",
-                                padding: "0.12rem 0.45rem",
-                                borderRadius: "20px",
-                                letterSpacing: "0.05em",
-                              }}
+                              className="shrink-0 text-xs px-2 py-0.5 rounded-full text-white font-medium"
+                              style={{ backgroundColor: "var(--teal-500)" }}
                             >
-                              ✓ VERIFIED
+                              ✓ Verified
                             </span>
                           )}
                         </div>
 
                         {/* Location */}
-                        <p
-                          style={{
-                            fontSize: "0.85rem",
-                            color: "var(--text-secondary)",
-                            marginBottom: "0.4rem",
-                          }}
-                        >
-                          📍 {hospital.lga}, {hospital.state} State
+                        <p className="text-xs text-gray-500 mb-2">
+                          📍 {hospital.lga}, {hospital.state}
                         </p>
 
-                        {/* Address */}
-                        {hospital.address && (
-                          <p
-                            style={{
-                              fontSize: "0.82rem",
-                              color: "var(--text-muted)",
-                              marginBottom: "0.5rem",
-                            }}
-                          >
-                            {hospital.address}
-                          </p>
-                        )}
-
-                        {/* Specialties — slice(0, 4) shows only first 4 to avoid clutter */}
-                        {hospital.specialties &&
-                          hospital.specialties.length > 0 && (
-                            <div
+                        {/* Distance badge — only shows in Near Me mode */}
+                        {hospital.distance_km !== undefined && (
+                          <div className="mb-2">
+                            <span
+                              className="text-xs font-semibold px-2 py-1 rounded-full"
                               style={{
-                                display: "flex",
-                                gap: "0.35rem",
-                                flexWrap: "wrap",
-                                marginTop: "0.4rem",
+                                backgroundColor: "var(--teal-100)",
+                                color: "var(--teal-700)",
                               }}
                             >
+                              📍 {hospital.distance_km} km away
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Type pill */}
+                        <span className="inline-block text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500 mb-3">
+                          {hospital.type}
+                        </span>
+
+                        {/* Specialties */}
+                        {hospital.specialties &&
+                          hospital.specialties.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
                               {hospital.specialties
-                                .slice(0, 4)
-                                .map((specialty) => (
+                                .slice(0, 3)
+                                .map((s: string) => (
+                                  // .slice(0, 3) shows max 3 specialty tags to keep cards tidy
                                   <span
-                                    key={specialty}
+                                    key={s}
+                                    className="text-xs px-2 py-0.5 rounded-full"
                                     style={{
-                                      background: "var(--warm-gray)",
-                                      color: "var(--text-secondary)",
-                                      fontSize: "0.72rem",
-                                      padding: "0.18rem 0.55rem",
-                                      borderRadius: "20px",
-                                      fontWeight: "500",
+                                      backgroundColor: "var(--teal-100)",
+                                      color: "var(--teal-700)",
                                     }}
                                   >
-                                    {formatSpecialty(specialty)}
+                                    {formatSpecialty(s)}
                                   </span>
                                 ))}
-                              {hospital.specialties.length > 4 && (
-                                <span
-                                  style={{
-                                    fontSize: "0.72rem",
-                                    color: "var(--text-muted)",
-                                    padding: "0.18rem 0.4rem",
-                                  }}
-                                >
-                                  +{hospital.specialties.length - 4} more
+                              {hospital.specialties.length > 3 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                  +{hospital.specialties.length - 3} more
                                 </span>
                               )}
                             </div>
                           )}
-                      </div>
-
-                      {/* Right side — type badge + phone */}
-                      <div
-                        style={{
-                          marginLeft: "1rem",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-end",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        <span
-                          style={{
-                            background: "var(--teal-900)",
-                            color: "#ffffff",
-                            fontSize: "0.72rem",
-                            fontWeight: "600",
-                            padding: "0.28rem 0.75rem",
-                            borderRadius: "20px",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {hospital.type}
-                        </span>
-                        {hospital.phone && (
-                          <span
-                            style={{
-                              fontSize: "0.8rem",
-                              color: "var(--text-muted)",
-                            }}
-                          >
-                            📞 {hospital.phone}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── FOOTER ── */}
-      <footer
-        style={{
-          background: "var(--teal-900)",
-          color: "#a8d5d1",
-          textAlign: "center",
-          padding: "2rem",
-          fontSize: "0.85rem",
-          marginTop: "4rem",
-        }}
-      >
-        © 2026 Carefinder · Built for Nigeria 🇳🇬
-      </footer>
-    </main>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </main>
+    </div>
   );
 }
