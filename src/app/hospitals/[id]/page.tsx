@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 // --- TYPE DEFINITIONS ---
 
@@ -44,21 +45,26 @@ function formatSpecialty(slug: string): string {
 export default function HospitalDetailPage({ params }: PageProps) {
   // params is destructured here — we pull it out of the props object
   // { params } is the same as writing: function HospitalDetailPage(props) { const params = props.params }
-
+  const { user } = useAuth();
+  // user: the currently logged-in user, or null if no one is logged in
   const [hospital, setHospital] = useState<Hospital | null>(null);
   // Hospital | null means the value is either a Hospital object or null (not loaded yet)
 
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [saved, setSaved] = useState<boolean>(false);
+  // saved: true if the current user has already saved this hospital
+  const [saveLoading, setSaveLoading] = useState<boolean>(false);
+  // saveLoading: true while the save/unsave Supabase call is in progress
 
+  // Checks whether the logged-in user has already saved this hospital
   useEffect(() => {
     async function fetchHospital() {
       const { data, error } = await supabase
         .from("hospitals")
         .select("*")
-        .eq("id", params.id) // .eq() means "where id equals params.id"
-        .single(); // .single() returns one object instead of an array
-      // It also sets error if no row is found
+        .eq("id", params.id)
+        .single();
 
       if (error || !data) {
         setNotFound(true);
@@ -68,11 +74,60 @@ export default function HospitalDetailPage({ params }: PageProps) {
       setLoading(false);
     }
 
-    fetchHospital();
-  }, [params.id]);
-  // [params.id] in the dependency array means:
-  // "re-run this effect if params.id changes" (i.e. if the user navigates to a different hospital)
+    async function checkIfSaved() {
+      // Only check if a user is logged in
+      if (!user) return;
 
+      const { data } = await supabase
+        .from("saved_hospitals")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("hospital_id", params.id)
+        .maybeSingle();
+
+      setSaved(!!data);
+    }
+
+    fetchHospital();
+    checkIfSaved();
+  }, [params.id, user]);
+  // Re-runs when params.id or user changes
+
+  // Handles saving or unsaving a hospital when the button is clicked
+  async function handleSaveToggle() {
+    if (!user) return;
+    // Safety check — button shouldn't be clickable if not logged in, but just in case
+
+    setSaveLoading(true);
+    // Show loading state on the button while we wait for Supabase
+
+    if (saved) {
+      // UNSAVE: delete the row from saved_hospitals
+      await supabase
+        .from("saved_hospitals")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("hospital_id", params.id);
+      setSaved(false);
+    } else {
+      // SAVE: only insert if the row doesn't already exist
+      const { data: existing } = await supabase
+        .from("saved_hospitals")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("hospital_id", params.id)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase
+          .from("saved_hospitals")
+          .insert({ user_id: user.id, hospital_id: params.id });
+      }
+      setSaved(true);
+    }
+
+    setSaveLoading(false);
+  }
   // NOTE: The shared <Header /> from layout.tsx renders automatically on every page.
   // This file no longer defines its own Header — that was removed to avoid duplication.
 
@@ -253,6 +308,54 @@ export default function HospitalDetailPage({ params }: PageProps) {
               📍 {hospital.lga}, {hospital.state} State
             </span>
           </div>
+        </div>
+        {/* Save button */}
+        <div style={{ marginTop: "1.25rem" }}>
+          {user ? (
+            // Logged in — show save/unsave toggle button
+            <button
+              onClick={handleSaveToggle}
+              disabled={saveLoading}
+              // disabled while the Supabase call is in progress
+              style={{
+                background: saved
+                  ? "rgba(255,255,255,0.15)"
+                  : "var(--teal-400)",
+                color: "#ffffff",
+                border: saved ? "1px solid rgba(255,255,255,0.4)" : "none",
+                fontSize: "0.85rem",
+                fontWeight: "600",
+                padding: "0.5rem 1.25rem",
+                borderRadius: "20px",
+                cursor: saveLoading ? "not-allowed" : "pointer",
+                opacity: saveLoading ? 0.7 : 1,
+                transition: "all 0.2s ease",
+              }}
+            >
+              {saveLoading
+                ? "Saving..."
+                : saved
+                  ? "✓ Saved"
+                  : "♡ Save Hospital"}
+            </button>
+          ) : (
+            // Not logged in — show link to auth page
+            <Link
+              href="/auth"
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                color: "#ffffff",
+                fontSize: "0.85rem",
+                fontWeight: "600",
+                padding: "0.5rem 1.25rem",
+                borderRadius: "20px",
+                textDecoration: "none",
+                border: "1px solid rgba(255,255,255,0.4)",
+              }}
+            >
+              Log in to save
+            </Link>
+          )}
         </div>
       </div>
 
