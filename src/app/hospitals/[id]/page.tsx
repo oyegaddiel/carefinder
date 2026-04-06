@@ -73,6 +73,9 @@ export default function HospitalDetailPage({ params }: PageProps) {
   // [params.id] in the dependency array means:
   // "re-run this effect if params.id changes" (i.e. if the user navigates to a different hospital)
 
+  // NOTE: The shared <Header /> from layout.tsx renders automatically on every page.
+  // This file no longer defines its own Header — that was removed to avoid duplication.
+
   // ── LOADING STATE ──
   if (loading) {
     return (
@@ -82,7 +85,6 @@ export default function HospitalDetailPage({ params }: PageProps) {
           minHeight: "100vh",
         }}
       >
-        <Header />
         <div
           style={{
             maxWidth: "800px",
@@ -107,7 +109,6 @@ export default function HospitalDetailPage({ params }: PageProps) {
           minHeight: "100vh",
         }}
       >
-        <Header />
         <div
           style={{
             maxWidth: "800px",
@@ -153,8 +154,6 @@ export default function HospitalDetailPage({ params }: PageProps) {
         background: "var(--warm-white)",
       }}
     >
-      <Header />
-
       {/* ── HERO BAND ── */}
       <div
         style={{
@@ -399,20 +398,20 @@ export default function HospitalDetailPage({ params }: PageProps) {
             </h2>
 
             {/* Phone */}
-            {hospital.phone ? (
-              <div style={{ marginBottom: "1rem" }}>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: "700",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Phone
-                </p>
+            <div style={{ marginBottom: "1rem" }}>
+              <p
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: "700",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  marginBottom: "0.3rem",
+                }}
+              >
+                Phone
+              </p>
+              {hospital.phone ? (
                 <a
                   href={`tel:${hospital.phone}`}
                   style={{
@@ -424,21 +423,7 @@ export default function HospitalDetailPage({ params }: PageProps) {
                 >
                   {hospital.phone}
                 </a>
-              </div>
-            ) : (
-              <div style={{ marginBottom: "1rem" }}>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: "700",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Phone
-                </p>
+              ) : (
                 <p
                   style={{
                     fontSize: "0.88rem",
@@ -448,24 +433,24 @@ export default function HospitalDetailPage({ params }: PageProps) {
                 >
                   Not available
                 </p>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Email */}
-            {hospital.email ? (
-              <div style={{ marginBottom: "1.25rem" }}>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: "700",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Email
-                </p>
+            <div style={{ marginBottom: "1.25rem" }}>
+              <p
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: "700",
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  marginBottom: "0.3rem",
+                }}
+              >
+                Email
+              </p>
+              {hospital.email ? (
                 <a
                   href={`mailto:${hospital.email}`}
                   style={{
@@ -478,21 +463,7 @@ export default function HospitalDetailPage({ params }: PageProps) {
                 >
                   {hospital.email}
                 </a>
-              </div>
-            ) : (
-              <div style={{ marginBottom: "1.25rem" }}>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: "700",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Email
-                </p>
+              ) : (
                 <p
                   style={{
                     fontSize: "0.88rem",
@@ -502,8 +473,8 @@ export default function HospitalDetailPage({ params }: PageProps) {
                 >
                   Not available
                 </p>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Rating */}
             <div style={{ paddingTop: "1rem", borderTop: "1px solid #e8e6e0" }}>
@@ -549,60 +520,5 @@ export default function HospitalDetailPage({ params }: PageProps) {
         © 2026 Carefinder · Built for Nigeria 🇳🇬
       </footer>
     </main>
-  );
-}
-
-// ── HEADER COMPONENT ──
-// We define Header as a separate function here because it's used in three places:
-// the loading state, the not-found state, and the main page.
-// This avoids repeating the same JSX three times.
-function Header() {
-  return (
-    <header
-      style={{
-        background: "var(--teal-900)",
-        padding: "0 2rem",
-        height: "64px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-      }}
-    >
-      <Link
-        href="/"
-        style={{
-          fontFamily: "var(--font-playfair, serif)",
-          color: "#ffffff",
-          textDecoration: "none",
-          fontSize: "1.4rem",
-          fontWeight: "700",
-          letterSpacing: "-0.02em",
-        }}
-      >
-        Carefinder
-      </Link>
-      <nav style={{ display: "flex", gap: "2rem" }}>
-        <Link
-          href="/hospitals"
-          style={{
-            color: "#a8d5d1",
-            textDecoration: "none",
-            fontSize: "0.9rem",
-          }}
-        >
-          Find Hospitals
-        </Link>
-        <Link
-          href="/"
-          style={{
-            color: "#a8d5d1",
-            textDecoration: "none",
-            fontSize: "0.9rem",
-          }}
-        >
-          Home
-        </Link>
-      </nav>
-    </header>
   );
 }

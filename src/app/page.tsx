@@ -61,54 +61,10 @@ export default function Home() {
       h.type.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  // NOTE: The shared <Header /> component is rendered by layout.tsx automatically.
+  // We do NOT include a header here — doing so would cause it to appear twice.
   return (
     <main style={{ fontFamily: "var(--font-dm-sans, sans-serif)" }}>
-      {/* ── HEADER ── */}
-      <header
-        style={{
-          background: "var(--teal-900)",
-          padding: "0 2rem",
-          height: "64px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-playfair, serif)",
-            color: "#ffffff",
-            fontSize: "1.4rem",
-            fontWeight: "700",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Carefinder
-        </span>
-        <nav style={{ display: "flex", gap: "2rem" }}>
-          <Link
-            href="/hospitals"
-            style={{
-              color: "#a8d5d1",
-              textDecoration: "none",
-              fontSize: "0.9rem",
-            }}
-          >
-            Find Hospitals
-          </Link>
-          <a
-            href="#"
-            style={{
-              color: "#a8d5d1",
-              textDecoration: "none",
-              fontSize: "0.9rem",
-            }}
-          >
-            About
-          </a>
-        </nav>
-      </header>
-
       {/* ── HERO SECTION ── */}
       <section
         style={{
@@ -291,125 +247,132 @@ export default function Home() {
         {/* Hospital cards */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {filtered.map((hospital) => (
-            <div
+            <Link
               key={hospital.id}
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e8e6e0",
-                borderRadius: "12px",
-                padding: "1.5rem",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                transition: "box-shadow 0.2s ease, transform 0.2s ease",
-                cursor: "pointer",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)";
-                e.currentTarget.style.transform = "translateY(-2px)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
+              href={`/hospitals/${hospital.id}`}
+              style={{ textDecoration: "none" }}
             >
-              <div style={{ flex: 1 }}>
-                {/* Hospital name */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  <h3
-                    style={{
-                      fontFamily: "var(--font-playfair, serif)",
-                      fontSize: "1.05rem",
-                      fontWeight: "700",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {hospital.name}
-                  </h3>
-                  {/* Verified badge — only shows if hospital.verified is true */}
-                  {hospital.verified && (
-                    <span
-                      style={{
-                        background: "var(--teal-100)",
-                        color: "var(--teal-700)",
-                        fontSize: "0.7rem",
-                        fontWeight: "600",
-                        padding: "0.15rem 0.5rem",
-                        borderRadius: "20px",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      VERIFIED
-                    </span>
-                  )}
-                </div>
-
-                {/* Location */}
-                <p
-                  style={{
-                    color: "var(--text-secondary)",
-                    fontSize: "0.88rem",
-                    marginBottom: "0.5rem",
-                  }}
-                >
-                  📍 {hospital.lga}, {hospital.state} State
-                </p>
-
-                {/* Specialties */}
-                {hospital.specialties && hospital.specialties.length > 0 && (
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e8e6e0",
+                  borderRadius: "12px",
+                  padding: "1.5rem",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                  transition: "box-shadow 0.2s ease, transform 0.2s ease",
+                  cursor: "pointer",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 8px 24px rgba(0,0,0,0.1)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 2px 8px rgba(0,0,0,0.04)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  {/* Hospital name */}
                   <div
                     style={{
                       display: "flex",
-                      gap: "0.4rem",
-                      flexWrap: "wrap",
-                      marginTop: "0.5rem",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.4rem",
                     }}
                   >
-                    {hospital.specialties.slice(0, 3).map((specialty) => (
-                      // slice(0, 3) shows only the first 3 specialties to avoid clutter
+                    <h3
+                      style={{
+                        fontFamily: "var(--font-playfair, serif)",
+                        fontSize: "1.05rem",
+                        fontWeight: "700",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {hospital.name}
+                    </h3>
+                    {/* Verified badge — only shows if hospital.verified is true */}
+                    {hospital.verified && (
                       <span
-                        key={specialty}
                         style={{
-                          background: "var(--warm-gray)",
-                          color: "var(--text-secondary)",
-                          fontSize: "0.75rem",
-                          padding: "0.2rem 0.6rem",
+                          background: "var(--teal-100)",
+                          color: "var(--teal-700)",
+                          fontSize: "0.7rem",
+                          fontWeight: "600",
+                          padding: "0.15rem 0.5rem",
                           borderRadius: "20px",
-                          fontWeight: "500",
+                          letterSpacing: "0.05em",
                         }}
                       >
-                        {specialty}
+                        VERIFIED
                       </span>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Right side — type badge */}
-              <div
-                style={{
-                  background: "var(--teal-900)",
-                  color: "#ffffff",
-                  fontSize: "0.75rem",
-                  fontWeight: "600",
-                  padding: "0.3rem 0.8rem",
-                  borderRadius: "20px",
-                  marginLeft: "1rem",
-                  whiteSpace: "nowrap",
-                  alignSelf: "flex-start",
-                }}
-              >
-                {hospital.type}
+                  {/* Location */}
+                  <p
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontSize: "0.88rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    📍 {hospital.lga}, {hospital.state} State
+                  </p>
+
+                  {/* Specialties */}
+                  {hospital.specialties && hospital.specialties.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.4rem",
+                        flexWrap: "wrap",
+                        marginTop: "0.5rem",
+                      }}
+                    >
+                      {hospital.specialties.slice(0, 3).map((specialty) => (
+                        // slice(0, 3) shows only the first 3 specialties to avoid clutter
+                        <span
+                          key={specialty}
+                          style={{
+                            background: "var(--warm-gray)",
+                            color: "var(--text-secondary)",
+                            fontSize: "0.75rem",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "20px",
+                            fontWeight: "500",
+                          }}
+                        >
+                          {specialty}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side — type badge */}
+                <div
+                  style={{
+                    background: "var(--teal-900)",
+                    color: "#ffffff",
+                    fontSize: "0.75rem",
+                    fontWeight: "600",
+                    padding: "0.3rem 0.8rem",
+                    borderRadius: "20px",
+                    marginLeft: "1rem",
+                    whiteSpace: "nowrap",
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  {hospital.type}
+                </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </section>

@@ -275,35 +275,13 @@ export default function HospitalsPage() {
   });
 
   // --- Render ---
+  // NOTE: The shared <Header /> component is now rendered by layout.tsx automatically.
+  // We do NOT include a header here anymore — doing so would cause it to appear twice.
   return (
     <div
       className="min-h-screen"
       style={{ backgroundColor: "var(--warm-white)" }}
     >
-      {/* Header */}
-      <header
-        style={{ backgroundColor: "var(--teal-900)" }}
-        className="text-white"
-      >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-2xl font-bold"
-            style={{ fontFamily: "var(--font-playfair)" }}
-          >
-            Carefinder
-          </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/" className="hover:text-teal-300 transition-colors">
-              Home
-            </Link>
-            <Link href="/hospitals" className="text-teal-300 font-medium">
-              Find Hospitals
-            </Link>
-          </nav>
-        </div>
-      </header>
-
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Page title + Near Me button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
