@@ -3,25 +3,49 @@
 // It uses the useAuth() hook to check if a user is logged in,
 // then shows different content depending on their auth state.
 
-"use client"; // This file uses React hooks, so it must run in the browser, not on the server
+"use client";
 
-import Link from "next/link"; // Next.js built-in component for client-side navigation
-import { useAuth } from "@/context/AuthContext"; // Our custom hook that gives us the current user + signOut function
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export default function Header() {
-  // useAuth() gives us two things:
-  // - user: the currently logged-in user object (or null if no one is logged in)
-  // - signOut: a function we can call to log the user out
   const { user, signOut } = useAuth();
+
+  // isAdmin tracks whether the logged-in user has role = 'admin'.
+  // null means we haven't checked yet.
+  // false means we checked and they're not admin (or no one is logged in).
+  // true means they are admin and should see the Admin link.
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+
+  useEffect(() => {
+    // If no one is logged in, make sure isAdmin is false and stop.
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
+    // Look up this user's role in the public.users table.
+    async function checkRole() {
+      const { data } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", user!.id)
+        .maybeSingle();
+
+      // If role is 'admin', show the Admin link. Otherwise hide it.
+      setIsAdmin(data?.role === "admin");
+    }
+
+    checkRole();
+  }, [user]);
+  // This re-runs whenever user changes — e.g. on login or logout.
 
   return (
     <header className="w-full bg-white border-b border-gray-200 px-6 py-4">
-      {/* 
-        This outer div uses flexbox to push the logo to the left
-        and the navigation links to the right 
-      */}
       <div className="max-w-6xl mx-auto flex items-center justify-between">
-        {/* LEFT SIDE — Logo / Brand name */}
+        {/* LEFT SIDE — Logo */}
         <Link
           href="/"
           className="text-xl font-bold"
@@ -33,9 +57,8 @@ export default function Header() {
           Carefinder
         </Link>
 
-        {/* RIGHT SIDE — Auth-aware navigation */}
+        {/* RIGHT SIDE — Navigation */}
         <nav className="flex items-center gap-4">
-          {/* Always visible: link to hospital search */}
           <Link
             href="/hospitals"
             className="text-sm hover:underline"
@@ -44,13 +67,7 @@ export default function Header() {
             Find Hospitals
           </Link>
 
-          {/* 
-            Conditional rendering:
-            - If user is null (not logged in): show "Log In" link
-            - If user exists (logged in): show their email + Log Out button
-          */}
           {user === null ? (
-            // NOT logged in — show Log In link
             <Link
               href="/auth"
               className="text-sm font-medium px-4 py-2 rounded-md text-white"
@@ -59,12 +76,7 @@ export default function Header() {
               Log In
             </Link>
           ) : (
-            // LOGGED IN — show email and logout button
             <div className="flex items-center gap-3">
-              {/* 
-                "Saved" link — only visible when logged in.
-                Takes the user to their saved hospitals page.
-              */}
               <Link
                 href="/saved"
                 className="text-sm hover:underline"
@@ -74,9 +86,19 @@ export default function Header() {
               </Link>
 
               {/* 
-                user.email is the email address of the logged-in user.
-                It comes from Supabase Auth automatically.
+                Admin link — only renders when isAdmin is true.
+                A regular user will never see this link.
               */}
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="text-sm hover:underline"
+                  style={{ color: "var(--teal-700)" }}
+                >
+                  Admin
+                </Link>
+              )}
+
               <span
                 className="text-sm"
                 style={{ color: "var(--text-secondary)" }}
@@ -84,11 +106,6 @@ export default function Header() {
                 {user.email}
               </span>
 
-              {/* 
-                signOut is the function from AuthContext.
-                Calling it logs the user out and clears the session.
-                onClick={() => signOut()} means: when this button is clicked, call signOut()
-              */}
               <button
                 onClick={() => signOut()}
                 className="text-sm font-medium px-4 py-2 rounded-md border"
