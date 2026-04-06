@@ -62,6 +62,18 @@ export default function Header() {
             // LOGGED IN — show email and logout button
             <div className="flex items-center gap-3">
               {/* 
+                "Saved" link — only visible when logged in.
+                Takes the user to their saved hospitals page.
+              */}
+              <Link
+                href="/saved"
+                className="text-sm hover:underline"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                Saved
+              </Link>
+
+              {/* 
                 user.email is the email address of the logged-in user.
                 It comes from Supabase Auth automatically.
               */}
