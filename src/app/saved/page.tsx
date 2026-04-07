@@ -111,6 +111,25 @@ export default function SavedPage() {
   }
 
   // --- MAIN PAGE ---
+  // Removes a hospital from the user's saved list
+  const handleRemove = async (hospitalId: string) => {
+    const { error } = await supabase
+      .from("saved_hospitals")
+      .delete()
+      .eq("user_id", user!.id)
+      .eq("hospital_id", hospitalId);
+
+    if (error) {
+      console.error("Remove error:", error.message);
+      return;
+    }
+
+    // Remove from local state immediately — no re-fetch needed
+    setSaved((prev) =>
+      prev.filter((entry) => entry.hospital_id !== hospitalId),
+    );
+  };
+
   return (
     <main
       style={{
@@ -229,11 +248,38 @@ export default function SavedPage() {
                         {h.type} · {h.lga}, {h.state} State
                       </p>
                     </div>
-                    <span
-                      style={{ color: "var(--teal-500)", fontSize: "1.1rem" }}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                      }}
                     >
-                      →
-                    </span>
+                      <button
+                        onClick={(e) => {
+                          // e.preventDefault() stops the Link from navigating when the button is clicked
+                          e.preventDefault();
+                          handleRemove(entry.hospital_id);
+                        }}
+                        style={{
+                          background: "#fff0f0",
+                          color: "#dc2626",
+                          border: "1px solid #fecaca",
+                          borderRadius: "8px",
+                          padding: "0.35rem 0.75rem",
+                          fontSize: "0.75rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                      <span
+                        style={{ color: "var(--teal-500)", fontSize: "1.1rem" }}
+                      >
+                        →
+                      </span>
+                    </div>
                   </div>
                 </Link>
               );
