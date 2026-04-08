@@ -206,13 +206,14 @@ export default function HospitalDetailPage({ params }: PageProps) {
       style={{
         fontFamily: "var(--font-dm-sans, sans-serif)",
         minHeight: "100vh",
-        background: "var(--warm-white)",
+        background: "#f0f7f5",
       }}
     >
       {/* ── HERO BAND ── */}
       <div
         style={{
-          background: "var(--teal-900)",
+          background:
+            "linear-gradient(135deg, #053d2e 0%, #085041 40%, #0f6e56 100%)",
           padding: "2.5rem 2rem",
         }}
       >
@@ -310,7 +311,13 @@ export default function HospitalDetailPage({ params }: PageProps) {
           </div>
         </div>
         {/* Save button */}
-        <div style={{ marginTop: "1.25rem" }}>
+        <div
+          style={{
+            maxWidth: "860px",
+            margin: "1.25rem auto 0",
+            paddingLeft: "0",
+          }}
+        >
           {user ? (
             // Logged in — show save/unsave toggle button
             <button
