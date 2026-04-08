@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 // useRouter lets us redirect the user to another page after login/signup
 // next/navigation is the Next.js 14 way — NOT next/router (that's the old Pages Router)
 
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export default function AuthPage() {
@@ -50,14 +49,12 @@ export default function AuthPage() {
           data: {
             full_name: fullName,
             // This stores the user's name in Supabase Auth metadata
-            // It's separate from our public users table — we'll sync them later
           },
         },
       });
 
       if (signUpError) {
         setError(signUpError.message);
-        // signUpError.message is Supabase's error description e.g. "Password should be at least 6 characters"
       } else if (data.user) {
         // Signup succeeded — also insert into our public users table
         const { error: insertError } = await supabase.from("users").insert({
@@ -96,51 +93,84 @@ export default function AuthPage() {
   }
 
   // --- Render ---
+  // NOTE: The shared <Header /> from layout.tsx renders automatically.
+  // This file does NOT define its own header.
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ backgroundColor: "var(--warm-white)" }}
+      style={{
+        minHeight: "100vh",
+        background: "#f0f7f5",
+        fontFamily: "var(--font-dm-sans, sans-serif)",
+      }}
     >
-      {/* Header */}
-      <header
-        style={{ backgroundColor: "var(--teal-900)" }}
-        className="text-white"
+      {/* ── HERO BANNER ── */}
+      <div
+        style={{
+          background:
+            "linear-gradient(135deg, #053d2e 0%, #085041 40%, #0f6e56 100%)",
+          padding: "3rem 2rem 4rem",
+          textAlign: "center",
+        }}
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-2xl font-bold"
-            style={{ fontFamily: "var(--font-playfair)" }}
-          >
-            Carefinder
-          </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/" className="hover:text-teal-300 transition-colors">
-              Home
-            </Link>
-            <Link
-              href="/hospitals"
-              className="hover:text-teal-300 transition-colors"
-            >
-              Find Hospitals
-            </Link>
-          </nav>
-        </div>
-      </header>
+        <h1
+          style={{
+            fontFamily: "var(--font-playfair, serif)",
+            color: "#ffffff",
+            fontSize: "clamp(1.6rem, 4vw, 2.2rem)",
+            fontWeight: "700",
+            marginBottom: "0.5rem",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {mode === "login" ? "Welcome back" : "Join Carefinder"}
+        </h1>
+        <p style={{ color: "#c5e6e3", fontSize: "0.95rem" }}>
+          {mode === "login"
+            ? "Log in to access your saved hospitals"
+            : "Create an account to save hospitals and more"}
+        </p>
+      </div>
 
-      {/* Main content — centered card */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+      {/* ── CARD — pulled up over the banner ── */}
+      <div
+        style={{
+          maxWidth: "460px",
+          margin: "-2rem auto 0",
+          padding: "0 1rem 4rem",
+        }}
+      >
+        <div
+          style={{
+            background: "#ffffff",
+            borderRadius: "16px",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
+            padding: "2rem",
+          }}
+        >
           {/* Tab switcher: Login / Sign Up */}
-          <div className="flex rounded-xl overflow-hidden border border-gray-200 mb-8">
+          <div
+            style={{
+              display: "flex",
+              borderRadius: "12px",
+              overflow: "hidden",
+              border: "1px solid #e2e8e6",
+              marginBottom: "2rem",
+            }}
+          >
             <button
               onClick={() => {
                 setMode("login");
                 setError(null);
                 setSuccess(null);
               }}
-              className="flex-1 py-2.5 text-sm font-medium transition-colors"
               style={{
+                flex: 1,
+                padding: "0.65rem",
+                fontSize: "0.88rem",
+                fontWeight: "600",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
                 backgroundColor: mode === "login" ? "var(--teal-700)" : "white",
                 color: mode === "login" ? "white" : "var(--text-secondary)",
               }}
@@ -153,8 +183,14 @@ export default function AuthPage() {
                 setError(null);
                 setSuccess(null);
               }}
-              className="flex-1 py-2.5 text-sm font-medium transition-colors"
               style={{
+                flex: 1,
+                padding: "0.65rem",
+                fontSize: "0.88rem",
+                fontWeight: "600",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
                 backgroundColor:
                   mode === "signup" ? "var(--teal-700)" : "white",
                 color: mode === "signup" ? "white" : "var(--text-secondary)",
@@ -164,23 +200,18 @@ export default function AuthPage() {
             </button>
           </div>
 
-          {/* Title */}
-          <h1
-            className="text-2xl font-bold text-gray-900 mb-1"
-            style={{ fontFamily: "var(--font-playfair)" }}
-          >
-            {mode === "login" ? "Welcome back" : "Create your account"}
-          </h1>
-          <p className="text-sm text-gray-500 mb-6">
-            {mode === "login"
-              ? "Log in to access your saved hospitals"
-              : "Sign up to save hospitals and write reviews"}
-          </p>
-
           {/* Full name field — only shown during signup */}
           {mode === "signup" && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+            <div style={{ marginBottom: "1.25rem" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.82rem",
+                  fontWeight: "600",
+                  color: "var(--text-secondary)",
+                  marginBottom: "0.4rem",
+                }}
+              >
                 Full name
               </label>
               <input
@@ -188,14 +219,31 @@ export default function AuthPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Gaddiel Ogunniyi"
-                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                style={{
+                  width: "100%",
+                  border: "1px solid #d1d9d7",
+                  borderRadius: "10px",
+                  padding: "0.65rem 1rem",
+                  fontSize: "0.9rem",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  fontFamily: "var(--font-dm-sans, sans-serif)",
+                }}
               />
             </div>
           )}
 
           {/* Email field */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div style={{ marginBottom: "1.25rem" }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.82rem",
+                fontWeight: "600",
+                color: "var(--text-secondary)",
+                marginBottom: "0.4rem",
+              }}
+            >
               Email address
             </label>
             <input
@@ -203,13 +251,30 @@ export default function AuthPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              style={{
+                width: "100%",
+                border: "1px solid #d1d9d7",
+                borderRadius: "10px",
+                padding: "0.65rem 1rem",
+                fontSize: "0.9rem",
+                outline: "none",
+                boxSizing: "border-box",
+                fontFamily: "var(--font-dm-sans, sans-serif)",
+              }}
             />
           </div>
 
           {/* Password field */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.82rem",
+                fontWeight: "600",
+                color: "var(--text-secondary)",
+                marginBottom: "0.4rem",
+              }}
+            >
               Password
             </label>
             <input
@@ -217,13 +282,32 @@ export default function AuthPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 6 characters"
-              className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              style={{
+                width: "100%",
+                border: "1px solid #d1d9d7",
+                borderRadius: "10px",
+                padding: "0.65rem 1rem",
+                fontSize: "0.9rem",
+                outline: "none",
+                boxSizing: "border-box",
+                fontFamily: "var(--font-dm-sans, sans-serif)",
+              }}
             />
           </div>
 
           {/* Error message */}
           {error && (
-            <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div
+              style={{
+                marginBottom: "1rem",
+                padding: "0.75rem 1rem",
+                borderRadius: "10px",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                color: "#dc2626",
+                fontSize: "0.88rem",
+              }}
+            >
               {error}
             </div>
           )}
@@ -231,8 +315,15 @@ export default function AuthPage() {
           {/* Success message */}
           {success && (
             <div
-              className="mb-4 px-4 py-3 rounded-lg bg-teal-50 border border-teal-200 text-sm"
-              style={{ color: "var(--teal-700)" }}
+              style={{
+                marginBottom: "1rem",
+                padding: "0.75rem 1rem",
+                borderRadius: "10px",
+                background: "#f0fdf9",
+                border: "1px solid #99e6d8",
+                color: "var(--teal-700)",
+                fontSize: "0.88rem",
+              }}
             >
               {success}
             </div>
@@ -242,8 +333,19 @@ export default function AuthPage() {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="w-full py-3 rounded-lg text-white font-medium text-sm transition-all disabled:opacity-60"
-            style={{ backgroundColor: "var(--teal-700)" }}
+            style={{
+              width: "100%",
+              padding: "0.8rem",
+              borderRadius: "10px",
+              border: "none",
+              background: loading ? "#5a9e8f" : "var(--teal-700)",
+              color: "#ffffff",
+              fontSize: "0.95rem",
+              fontWeight: "600",
+              cursor: loading ? "not-allowed" : "pointer",
+              transition: "background 0.2s ease",
+              fontFamily: "var(--font-dm-sans, sans-serif)",
+            }}
           >
             {loading
               ? mode === "login"
@@ -254,7 +356,20 @@ export default function AuthPage() {
                 : "Create Account"}
           </button>
         </div>
-      </main>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <footer
+        style={{
+          background: "var(--teal-900)",
+          color: "#a8d5d1",
+          textAlign: "center",
+          padding: "2rem",
+          fontSize: "0.85rem",
+        }}
+      >
+        © 2026 Carefinder · Built for Nigeria 🇳🇬
+      </footer>
     </div>
   );
 }
